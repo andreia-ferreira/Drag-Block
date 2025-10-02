@@ -18,7 +18,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             DragBlockTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    MainScreen(modifier = Modifier.padding(innerPadding))
+                    MainScreen(
+                        modifier = Modifier.padding(innerPadding),
+//                        grid = listOf(
+//                            Cell(coordinates = Pair(0,0), type = Cell.Type.ACTIVE),
+//                            Cell(coordinates = Pair(0,1), type = Cell.Type.ACTIVE),
+//                            Cell(coordinates = Pair(1,0), type = Cell.Type.ACTIVE),
+//                            Cell(coordinates = Pair(1,1), type = Cell.Type.ACTIVE),
+//                        )
+                    )
                 }
             }
         }
