@@ -15,7 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
@@ -32,21 +32,32 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.penguin.dragblock.MainViewModel
+import net.penguin.dragblock.model.Cell
+import net.penguin.dragblock.model.Grid
 import net.penguin.dragblock.ui.theme.DragBlockTheme
 import net.penguin.dragblock.ui.theme.sizes
 import kotlin.math.roundToInt
 
+sealed class BlockAction {
+    data class OnDrag(val offset: Offset) : BlockAction()
+    data object OnDragEnd : BlockAction()
+    data class OnGloballyPositioned(val bounds: Rect) : BlockAction()
+}
 
 @Composable
 fun MainScreen(
     modifier: Modifier = Modifier,
+    viewModel: MainViewModel = hiltViewModel()
 ) {
-    var gridSize by remember { mutableIntStateOf(2) }
+    val grid by viewModel.gridState.collectAsStateWithLifecycle()
     var blockOffset by remember { mutableStateOf(Offset.Zero) }
     var blockBounds by remember { mutableStateOf(Rect.Zero) }
     val cellBounds = remember {
         mutableStateListOf<Rect>().apply {
-            repeat(gridSize * gridSize) { add(Rect.Zero) }
+            repeat(grid.rowSize * grid.rowSize) { add(Rect.Zero) }
         }
     }
     val hoveredCellIndexes by remember {
@@ -65,8 +76,13 @@ fun MainScreen(
                 currentOffset = blockOffset,
                 onAction = {
                     when (it) {
-                        BlockAction.OnCancel -> {
-                            blockOffset = Offset.Zero
+                        BlockAction.OnDragEnd -> {
+                            if (hoveredCellIndexes.isNotEmpty()) {
+                                viewModel.onBlockPlaced(hoveredCellIndexes)
+                                blockOffset = Offset.Zero
+                            } else {
+                                blockOffset = Offset.Zero
+                            }
                         }
                         is BlockAction.OnDrag -> {
                             blockOffset += it.offset
@@ -82,7 +98,7 @@ fun MainScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxSize(),
-                size = gridSize,
+                gridState = grid,
                 hoveredCellIndexes = hoveredCellIndexes,
                 onCellPositioned = { index, rect ->
                     cellBounds[index] = rect
@@ -105,12 +121,6 @@ fun MainScreen(
             }
         }
     }
-}
-
-sealed class BlockAction {
-    data class OnDrag(val offset: Offset): BlockAction()
-    data object OnCancel: BlockAction()
-    data class OnGloballyPositioned(val bounds: Rect) : BlockAction()
 }
 
 @Composable
@@ -136,7 +146,7 @@ fun Block(
                             onAction(BlockAction.OnDrag(dragAmount))
                         },
                         onDragEnd = {
-                            onAction(BlockAction.OnCancel)
+                            onAction(BlockAction.OnDragEnd)
                         }
                     )
                 }
@@ -147,17 +157,18 @@ fun Block(
 @Composable
 fun Grid(
     modifier: Modifier = Modifier,
-    size: Int,
+    gridState: Grid,
     hoveredCellIndexes: List<Int>,
     onCellPositioned: (Int, Rect) -> Unit
 ) {
     Box(modifier) {
         Column(modifier = Modifier.align(Alignment.Center)) {
-            repeat(size) { row ->
+            repeat(gridState.rowSize) { row ->
                 Row {
-                    repeat(size) { column ->
-                        val index = row * size + column
+                    repeat(gridState.rowSize) { column ->
+                        val index = row * gridState.rowSize + column
                         Cell(
+                            type = gridState.cells[index].type,
                             isHighlighted = hoveredCellIndexes.contains(index),
                             onGloballyPositioned = {
                                 onCellPositioned(index, it.boundsInRoot())
@@ -173,24 +184,35 @@ fun Grid(
 @Composable
 fun Cell(
     modifier: Modifier = Modifier,
+    type: Cell.Type,
     isHighlighted: Boolean,
     onGloballyPositioned: (LayoutCoordinates) -> Unit
 ) {
-    Box(
-        modifier = modifier
-            .background(
-                color = if (isHighlighted) {
-                    MaterialTheme.colorScheme.tertiaryContainer
-                } else {
-                    MaterialTheme.colorScheme.secondaryContainer
-                },
-            )
-            .size(MaterialTheme.sizes.blockSize)
-            .border(width = 1.dp, color = MaterialTheme.colorScheme.primary)
-            .onGloballyPositioned {
-                onGloballyPositioned(it)
+    val boxModifier = modifier
+        .size(MaterialTheme.sizes.blockSize)
+        .then(
+            when (type) {
+                Cell.Type.ACTIVE -> Modifier
+                    .background(
+                        if (isHighlighted) {
+                            MaterialTheme.colorScheme.tertiaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.secondaryContainer
+                        }
+                    )
+                    .border(width = 1.dp, color = MaterialTheme.colorScheme.primary)
+                    .onGloballyPositioned {
+                        onGloballyPositioned(it)
+                    }
+
+                Cell.Type.EMPTY -> Modifier
+                Cell.Type.OBSTACLE -> Modifier.background(Color.Gray)
+                Cell.Type.FILLED -> Modifier
+                    .background(MaterialTheme.colorScheme.secondary)
             }
-    )
+        )
+
+    Box(boxModifier)
 }
 
 @Preview

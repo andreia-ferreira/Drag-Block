@@ -8,9 +8,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
+import dagger.hilt.android.AndroidEntryPoint
 import net.penguin.dragblock.ui.compose.MainScreen
 import net.penguin.dragblock.ui.theme.DragBlockTheme
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -20,12 +22,6 @@ class MainActivity : ComponentActivity() {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     MainScreen(
                         modifier = Modifier.padding(innerPadding),
-//                        grid = listOf(
-//                            Cell(coordinates = Pair(0,0), type = Cell.Type.ACTIVE),
-//                            Cell(coordinates = Pair(0,1), type = Cell.Type.ACTIVE),
-//                            Cell(coordinates = Pair(1,0), type = Cell.Type.ACTIVE),
-//                            Cell(coordinates = Pair(1,1), type = Cell.Type.ACTIVE),
-//                        )
                     )
                 }
             }
