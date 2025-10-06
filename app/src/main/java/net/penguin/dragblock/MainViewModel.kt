@@ -41,7 +41,7 @@ class MainViewModel @Inject constructor() : ViewModel() {
 
         val TEST_PUZZLE_PIECES = listOf(
             PuzzlePiece(
-                cells = listOf(Cell(Cell.Type.FILLED), Cell(Cell.Type.FILLED)),
+                cells = listOf(Cell(Cell.Type.FILLED)),
                 rows = 1,
                 columns = 1
             )
