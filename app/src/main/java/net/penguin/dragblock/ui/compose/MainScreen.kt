@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.penguin.dragblock.MainViewModel
 import net.penguin.dragblock.model.Cell
 import net.penguin.dragblock.model.Grid
+import net.penguin.dragblock.model.PuzzlePiece
 import net.penguin.dragblock.ui.theme.DragBlockTheme
 import net.penguin.dragblock.ui.theme.sizes
 import kotlin.math.roundToInt
@@ -52,7 +53,9 @@ fun MainScreen(
     modifier: Modifier = Modifier,
     viewModel: MainViewModel = hiltViewModel()
 ) {
+    val puzzlePieces by viewModel.puzzlePieces.collectAsStateWithLifecycle()
     val grid by viewModel.gridState.collectAsStateWithLifecycle()
+
     var blockOffset by remember { mutableStateOf(Offset.Zero) }
     var blockBounds by remember { mutableStateOf(Rect.Zero) }
     val cellBounds = remember {
@@ -68,12 +71,13 @@ fun MainScreen(
         Row(
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Block(
+            PuzzlePieces(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxSize()
                     .zIndex(1f),
-                currentOffset = blockOffset,
+                puzzlePieces = puzzlePieces,
+                currentPieceOffset = blockOffset,
                 onAction = {
                     when (it) {
                         BlockAction.OnDragEnd -> {
@@ -112,7 +116,6 @@ fun MainScreen(
         cellBounds.forEachIndexed { index, rect ->
             if (rect.contains(draggedCenter)) {
                 println("Currently over cell $index")
-                // Here you could update state to highlight the cell
                 if (!hoveredCellIndexes.contains(index)) {
                     hoveredCellIndexes.add(index)
                 }
@@ -124,38 +127,60 @@ fun MainScreen(
 }
 
 @Composable
-fun Block(
+private fun PuzzlePieces(
     modifier: Modifier = Modifier,
-    currentOffset: Offset,
+    puzzlePieces: List<PuzzlePiece>,
+    currentPieceOffset: Offset,
     onAction: (BlockAction) -> Unit
 ) {
-    Box(modifier) {
-        Box(
-            modifier = Modifier
-                .offset { IntOffset(currentOffset.x.roundToInt(), currentOffset.y.roundToInt()) }
-                .background(color = MaterialTheme.colorScheme.secondary)
-                .size(MaterialTheme.sizes.blockSize)
-                .align(Alignment.Center)
-                .onGloballyPositioned {
-                    onAction(BlockAction.OnGloballyPositioned(it.boundsInRoot()))
-                }
-                .pointerInput(Unit) {
-                    detectDragGestures(
-                        onDrag = { change, dragAmount ->
-                            change.consume()
-                            onAction(BlockAction.OnDrag(dragAmount))
-                        },
-                        onDragEnd = {
-                            onAction(BlockAction.OnDragEnd)
+    Box(modifier = modifier) {
+        Column(
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            puzzlePieces.forEach { piece ->
+                Column {
+                    repeat(piece.rows) { row ->
+                        Row {
+                            repeat(piece.columns) { column ->
+                                val index = row * piece.rows + column
+                                Cell(
+                                    modifier = Modifier
+                                        .offset {
+                                            IntOffset(
+                                                currentPieceOffset.x.roundToInt(),
+                                                currentPieceOffset.y.roundToInt()
+                                            )
+                                        }
+                                        .pointerInput(Unit) {
+                                            detectDragGestures(
+                                                onDrag = { change, dragAmount ->
+                                                    change.consume()
+                                                    onAction(BlockAction.OnDrag(dragAmount))
+                                                },
+                                                onDragEnd = {
+                                                    onAction(BlockAction.OnDragEnd)
+                                                }
+                                            )
+                                        }
+                                        .onGloballyPositioned {
+                                            onAction(BlockAction.OnGloballyPositioned(it.boundsInRoot()))
+                                        },
+                                    type = piece.cells[index].type,
+                                    isHighlighted = false,
+                                    onGloballyPositioned = {
+                                        onAction(BlockAction.OnGloballyPositioned(it.boundsInRoot()))
+                                    }
+                                )
+                            }
                         }
-                    )
+                    }
                 }
-        )
+            }
+        }
     }
 }
-
 @Composable
-fun Grid(
+private fun Grid(
     modifier: Modifier = Modifier,
     gridState: Grid,
     hoveredCellIndexes: List<Int>,
@@ -182,7 +207,7 @@ fun Grid(
 }
 
 @Composable
-fun Cell(
+private fun Cell(
     modifier: Modifier = Modifier,
     type: Cell.Type,
     isHighlighted: Boolean,
@@ -190,6 +215,9 @@ fun Cell(
 ) {
     val boxModifier = modifier
         .size(MaterialTheme.sizes.blockSize)
+        .onGloballyPositioned {
+            onGloballyPositioned(it)
+        }
         .then(
             when (type) {
                 Cell.Type.ACTIVE -> Modifier
@@ -201,9 +229,6 @@ fun Cell(
                         }
                     )
                     .border(width = 1.dp, color = MaterialTheme.colorScheme.primary)
-                    .onGloballyPositioned {
-                        onGloballyPositioned(it)
-                    }
 
                 Cell.Type.EMPTY -> Modifier
                 Cell.Type.OBSTACLE -> Modifier.background(Color.Gray)
