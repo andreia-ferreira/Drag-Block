@@ -25,7 +25,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.tooling.preview.Preview
@@ -41,11 +40,12 @@ import net.penguin.dragblock.model.PuzzlePiece
 import net.penguin.dragblock.ui.theme.DragBlockTheme
 import net.penguin.dragblock.ui.theme.sizes
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
-sealed class BlockAction {
-    data class OnDrag(val offset: Offset) : BlockAction()
-    data object OnDragEnd : BlockAction()
-    data class OnGloballyPositioned(val bounds: Rect) : BlockAction()
+sealed class PuzzlePieceAction {
+    data class OnDrag(val offset: Offset) : PuzzlePieceAction()
+    data object OnDragEnd : PuzzlePieceAction()
+    data class OnGlobalPositionChanged(val index: Int, val center: Offset) : PuzzlePieceAction()
 }
 
 @Composable
@@ -53,14 +53,18 @@ fun MainScreen(
     modifier: Modifier = Modifier,
     viewModel: MainViewModel = hiltViewModel()
 ) {
-    val puzzlePieces by viewModel.puzzlePieces.collectAsStateWithLifecycle()
+    val puzzlePiece by viewModel.puzzlePiece.collectAsStateWithLifecycle()
     val grid by viewModel.gridState.collectAsStateWithLifecycle()
 
-    var blockOffset by remember { mutableStateOf(Offset.Zero) }
-    var blockBounds by remember { mutableStateOf(Rect.Zero) }
-    val cellBounds = remember {
-        mutableStateListOf<Rect>().apply {
-            repeat(grid.rowSize * grid.rowSize) { add(Rect.Zero) }
+    var puzzlePieceOffset by remember { mutableStateOf(Offset.Zero) }
+    val puzzlePiecesCenter = remember {
+        mutableStateListOf<Offset>().apply {
+            repeat(puzzlePiece.cells.size) { add(Offset.Zero) }
+        }
+    }
+    val cellsCenter = remember {
+        mutableStateListOf<Offset>().apply {
+            repeat(grid.cells.size) { add(Offset.Zero) }
         }
     }
     val hoveredCellIndexes by remember {
@@ -76,23 +80,25 @@ fun MainScreen(
                     .weight(1f)
                     .fillMaxSize()
                     .zIndex(1f),
-                puzzlePieces = puzzlePieces,
-                currentPieceOffset = blockOffset,
+                puzzlePiece = puzzlePiece,
+                currentPieceOffset = puzzlePieceOffset,
                 onAction = {
                     when (it) {
-                        BlockAction.OnDragEnd -> {
+                        PuzzlePieceAction.OnDragEnd -> {
                             if (hoveredCellIndexes.isNotEmpty()) {
                                 viewModel.onBlockPlaced(hoveredCellIndexes)
-                                blockOffset = Offset.Zero
+                                puzzlePieceOffset = Offset.Zero
                             } else {
-                                blockOffset = Offset.Zero
+                                puzzlePieceOffset = Offset.Zero
                             }
                         }
-                        is BlockAction.OnDrag -> {
-                            blockOffset += it.offset
+
+                        is PuzzlePieceAction.OnDrag -> {
+                            puzzlePieceOffset += it.offset
                         }
-                        is BlockAction.OnGloballyPositioned -> {
-                            blockBounds = it.bounds
+
+                        is PuzzlePieceAction.OnGlobalPositionChanged -> {
+                            puzzlePiecesCenter[it.index] = it.center
                         }
                     }
                 }
@@ -105,23 +111,30 @@ fun MainScreen(
                 gridState = grid,
                 hoveredCellIndexes = hoveredCellIndexes,
                 onCellPositioned = { index, rect ->
-                    cellBounds[index] = rect
+                    cellsCenter[index] = rect.center
                 }
             )
         }
     }
 
-    LaunchedEffect(blockOffset, cellBounds) {
-        val draggedCenter = blockBounds.center
-        cellBounds.forEachIndexed { index, rect ->
-            if (rect.contains(draggedCenter)) {
-                println("Currently over cell $index")
-                if (!hoveredCellIndexes.contains(index)) {
-                    hoveredCellIndexes.add(index)
-                }
-            } else if (hoveredCellIndexes.contains(index)) {
-                hoveredCellIndexes.remove(index)
+    LaunchedEffect(puzzlePieceOffset, cellsCenter, puzzlePiece) {
+        if (hoveredCellIndexes.isNotEmpty() || puzzlePieceOffset == Offset.Zero) {
+            println("cleared list")
+            hoveredCellIndexes.clear()
+        }
+        val currentHoveredIndexes = mutableListOf<Int>()
+        puzzlePiecesCenter.forEach { center ->
+            val distances = cellsCenter.map { calculateDistance(center, it) }
+            val hoveredIndex = distances.indexOf(distances.min().takeIf { it <= 200 })
+
+            if (!currentHoveredIndexes.contains(hoveredIndex) && hoveredIndex != -1) {
+                currentHoveredIndexes.add(hoveredIndex)
             }
+        }
+
+        if (currentHoveredIndexes.size == puzzlePiece.cells.size) {
+            hoveredCellIndexes.addAll(currentHoveredIndexes)
+            println("currentHoveredIndexes $currentHoveredIndexes")
         }
     }
 }
@@ -129,49 +142,49 @@ fun MainScreen(
 @Composable
 private fun PuzzlePieces(
     modifier: Modifier = Modifier,
-    puzzlePieces: List<PuzzlePiece>,
+    puzzlePiece: PuzzlePiece,
     currentPieceOffset: Offset,
-    onAction: (BlockAction) -> Unit
+    onAction: (PuzzlePieceAction) -> Unit
 ) {
     Box(modifier = modifier) {
         Column(
             modifier = Modifier.align(Alignment.Center)
         ) {
-            puzzlePieces.forEach { piece ->
-                Column {
-                    repeat(piece.rows) { row ->
-                        Row {
-                            repeat(piece.columns) { column ->
-                                val index = row * piece.rows + column
-                                Cell(
-                                    modifier = Modifier
-                                        .offset {
-                                            IntOffset(
-                                                currentPieceOffset.x.roundToInt(),
-                                                currentPieceOffset.y.roundToInt()
-                                            )
-                                        }
-                                        .pointerInput(Unit) {
-                                            detectDragGestures(
-                                                onDrag = { change, dragAmount ->
-                                                    change.consume()
-                                                    onAction(BlockAction.OnDrag(dragAmount))
-                                                },
-                                                onDragEnd = {
-                                                    onAction(BlockAction.OnDragEnd)
-                                                }
-                                            )
-                                        }
-                                        .onGloballyPositioned {
-                                            onAction(BlockAction.OnGloballyPositioned(it.boundsInRoot()))
-                                        },
-                                    type = piece.cells[index].type,
-                                    isHighlighted = false,
-                                    onGloballyPositioned = {
-                                        onAction(BlockAction.OnGloballyPositioned(it.boundsInRoot()))
+            Column {
+                repeat(puzzlePiece.rows) { row ->
+                    Row {
+                        repeat(puzzlePiece.columns) { column ->
+                            val index = row * puzzlePiece.columns + column
+                            Cell(
+                                modifier = Modifier
+                                    .offset {
+                                        IntOffset(
+                                            currentPieceOffset.x.roundToInt(),
+                                            currentPieceOffset.y.roundToInt()
+                                        )
                                     }
-                                )
-                            }
+                                    .pointerInput(Unit) {
+                                        detectDragGestures(
+                                            onDrag = { change, dragAmount ->
+                                                change.consume()
+                                                onAction(PuzzlePieceAction.OnDrag(dragAmount))
+                                            },
+                                            onDragEnd = {
+                                                onAction(PuzzlePieceAction.OnDragEnd)
+                                            }
+                                        )
+                                    }
+                                    .onGloballyPositioned {
+                                        onAction(
+                                            PuzzlePieceAction.OnGlobalPositionChanged(
+                                                index = index,
+                                                center = it.boundsInRoot().center
+                                            )
+                                        )
+                                    },
+                                type = puzzlePiece.cells[index].type,
+                                isHighlighted = false,
+                            )
                         }
                     }
                 }
@@ -179,6 +192,13 @@ private fun PuzzlePieces(
         }
     }
 }
+
+private fun calculateDistance(a: Offset, b: Offset): Float {
+    val dx = a.x - b.x
+    val dy = a.y - b.y
+    return sqrt(dx * dx + dy * dy)
+}
+
 @Composable
 private fun Grid(
     modifier: Modifier = Modifier,
@@ -193,11 +213,12 @@ private fun Grid(
                     repeat(gridState.rowSize) { column ->
                         val index = row * gridState.rowSize + column
                         Cell(
+                            modifier = Modifier
+                                .onGloballyPositioned {
+                                    onCellPositioned(index, it.boundsInRoot())
+                                },
                             type = gridState.cells[index].type,
                             isHighlighted = hoveredCellIndexes.contains(index),
-                            onGloballyPositioned = {
-                                onCellPositioned(index, it.boundsInRoot())
-                            }
                         )
                     }
                 }
@@ -211,13 +232,9 @@ private fun Cell(
     modifier: Modifier = Modifier,
     type: Cell.Type,
     isHighlighted: Boolean,
-    onGloballyPositioned: (LayoutCoordinates) -> Unit
 ) {
     val boxModifier = modifier
         .size(MaterialTheme.sizes.blockSize)
-        .onGloballyPositioned {
-            onGloballyPositioned(it)
-        }
         .then(
             when (type) {
                 Cell.Type.ACTIVE -> Modifier

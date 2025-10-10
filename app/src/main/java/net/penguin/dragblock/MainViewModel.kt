@@ -14,9 +14,9 @@ class MainViewModel @Inject constructor() : ViewModel() {
     private val _gridState: MutableStateFlow<Grid> = MutableStateFlow(TEST_GRID)
     val gridState: StateFlow<Grid> = _gridState
 
-    private val _puzzlePieces: MutableStateFlow<List<PuzzlePiece>> =
-        MutableStateFlow(TEST_PUZZLE_PIECES)
-    val puzzlePieces: StateFlow<List<PuzzlePiece>> = _puzzlePieces
+    private val _puzzlePieces: MutableStateFlow<PuzzlePiece> =
+        MutableStateFlow(TEST_PUZZLE_PIECE)
+    val puzzlePiece: StateFlow<PuzzlePiece> = _puzzlePieces
 
     fun onBlockPlaced(indexes: List<Int>) {
         _gridState.value = _gridState.value.copy(
@@ -39,12 +39,10 @@ class MainViewModel @Inject constructor() : ViewModel() {
             )
         )
 
-        val TEST_PUZZLE_PIECES = listOf(
-            PuzzlePiece(
-                cells = listOf(Cell(Cell.Type.FILLED)),
-                rows = 1,
-                columns = 1
-            )
+        val TEST_PUZZLE_PIECE = PuzzlePiece(
+            cells = listOf(Cell(Cell.Type.FILLED), Cell(Cell.Type.FILLED)),
+            rows = 1,
+            columns = 2
         )
     }
 }
